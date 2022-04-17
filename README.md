@@ -253,3 +253,96 @@ func TestSelectChannel(t *testing.T) {
 	}
 }
 ```
+
+# Race Condition
+
+Saat kita menjalankan go rountine itu tidak hanya berjalan secara concurent, tetapi dia juga berjalan secara pararel. Itu menjadi masalah jika kita melakukan manipulasi variabel yang sama oleh beberapa go rountine secara bersamaan (sharing variabel).
+
+```go
+func TestRaceCondition(t *testing.T) {
+	x := 0
+
+	for i := 0; i < 1000; i++ {
+		go func() {
+			for j := 1; j < 100; j++ {
+				x += 1
+			}
+		}()
+	}
+
+	time.Sleep(5 * time.Second)
+	fmt.Println("Counter = ", x)
+
+	// output harusnya 10000
+	// 96124
+}
+```
+
+## Mutex
+
+Mutex digunakan untuk melakukan locking dan unlocking. Ini cocok untuk menyelesaikan masalah race condition di atas karena menggunakan mutex hanya ada satu go routine yang melakukan lock (go routine lain akan menunggu untuk berjalan / melakukan locking) dan pada saat ini juga go routine akan mengunggu/diam sebelum go routine yang melakukan locking tadi melakukan unlocking.
+
+```go
+func TestRaceConditionWithMutex(t *testing.T) {
+	x := 0
+	var mutex sync.Mutex
+
+	for i := 1; i <= 1000; i++ {
+		go func() {
+			for j := 1; j <= 100; j++ {
+				mutex.Lock()
+				x += 1
+				mutex.Unlock()
+			}
+		}()
+	}
+
+	time.Sleep(5 * time.Second)
+	fmt.Println("Counter = ", x)
+	// hasilnya akan 100000 (sesuai keinginan)
+}
+```
+
+## RWMutex (Read Write Mutex)
+
+Kadang kita dihadapkan pada kasus ingin melakukan mutex untuk proses membaca data bukan untuk mengubah data. Pada kasus ini sebenarnya kita bisa membuat satu mutex seperti tadi, tapi masalahnya nanti akan rebutan antara membaca dan mengubah data tersebut.
+
+```go
+type BankAccount struct {
+	RWMutex sync.RWMutex
+	Balance int
+}
+
+func (account *BankAccount) addBalance(amount int) {
+	account.RWMutex.Lock()
+	account.Balance += amount
+	account.RWMutex.Unlock()
+}
+
+func (account *BankAccount) readBalance() int {
+	account.RWMutex.RLock()
+	balance := account.Balance
+	account.RWMutex.RUnlock()
+	return balance
+}
+
+func TestRWMutex(t *testing.T) {
+	account := BankAccount{}
+
+	for i := 0; i < 100; i++ {
+		go func() {
+			for j := 0; j < 100; j++ {
+				account.addBalance(1)
+				fmt.Println(account.readBalance())
+			}
+		}()
+	}
+
+	time.Sleep(5 * time.Second)
+	fmt.Println("Total Account = ", account.readBalance())
+}
+```
+
+# Deadlock
+
+Deadlock adalah posisi dimana go routine saling menunggu lock yang menyebabkan tidak ada go routine yang berjalan.
