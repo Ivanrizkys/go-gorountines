@@ -431,3 +431,103 @@ func TestWaitGroup(t *testing.T) {
 // 2022/04/18 21:17:00 Jalan ke sini dulu
 // 2022/04/18 21:17:05 Hai sayang
 ```
+
+## Once
+
+Once adalah sebuah function di golang yang digunakan untuk memastikan agar sebuah function hanya akan di eksekusi sebanyak satu kali. Jadi berapapun go rountine yang mengakses, bisa dipastikan bahwa hanya go rountine pertama yang bisa menjalankan function tersebut dan go rountine lain akan di hiraukan.
+
+```go
+var counter = 0
+
+// * function ini hanya akan di eksekusi sekali
+func OnlyOnce() {
+	counter++
+}
+
+func TestOnce(t *testing.T) {
+	var once sync.Once
+	var group sync.WaitGroup
+
+	for i := 0; i < 100; i++ {
+		go func() {
+			group.Add(1)
+			// * hanya boleh memasukkan function yang tidak memiliki parameter
+			once.Do(OnlyOnce)
+			group.Done()
+		}()
+	}
+	group.Wait()
+	log.Println(counter)
+}
+
+```
+
+## Pool
+
+Pool adalah implementasi design pattern bernama object pool pattern. Sederhananya pool digunakan untuk menyimpan data, selanjutnya jika kita ingin menggunakan datanya kita bisa mengambilnya dari pool tersebut. dan jika kita sudah selesai menggunakan datanya, kita harus mengembalikan lagi data tersebut ke dalam pool yang kita ambil tadi. Implementasi pool ini biasanya digunakan untuk melakukan koneksi ke database.
+
+```go
+func TestPool(t *testing.T) {
+	var pool sync.Pool
+	var group sync.WaitGroup
+
+	// * digunakan untuk menambah data ke pool
+	pool.Put("Ivan")
+	pool.Put("Rizky")
+	pool.Put("Saputra")
+
+	for i := 0; i < 10; i++ {
+		go func() {
+			group.Add(1)
+			// * digunakan untuk mengambil data dari pool
+			data := pool.Get()
+			log.Println(data)
+			// * jika kita sudah menggunakan data dari pool maka kita harus mengembalikan data tersebut
+			pool.Put(data)
+			group.Done()
+		}()
+	}
+
+	group.Wait()
+}
+```
+
+Jika kita ingin memberikan default value jika pool kita kosong maka pada saat deklarasi pool bisa melakukan seperti di bawah ini.
+```go
+var pool sync.Pool = sync.Pool{
+		New: func() any {
+			return "new"
+		},
+	}
+```
+
+# sync.Map
+
+Ini mirip seperti tipe data map biasanya. Namun tipe data ini biasanya digunakan jika proses penambahan data di map dilakukan secara concurency menggunakan go rountine. Hal ini dilakukan karena pada sync.Map itu aman dari race condition.
+
+```go
+func AddToMap(data *sync.Map, value int, group *sync.WaitGroup) {
+	defer group.Done()
+
+	group.Add(1)
+	// * perintah yang digunakan untuk menambahkan data ke map
+	data.Store(value, value)
+}
+
+func TestMap(t *testing.T) {
+	data := &sync.Map{}
+	group := &sync.WaitGroup{}
+
+	for i := 0; i < 100; i++ {
+		go AddToMap(data, i, group)
+	}
+
+	group.Wait()
+
+	// * digunakan untuk me looping map
+	data.Range(func(key, value any) bool {
+		log.Println(key, ": ", value)
+		return true
+	})
+}
+```
